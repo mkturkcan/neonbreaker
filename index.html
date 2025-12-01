@@ -25,13 +25,15 @@
             background-color: #020202;
             color: white;
             font-family: 'Rajdhani', sans-serif;
-            touch-action: none;
+            touch-action: none; /* Critical for iOS */
             user-select: none;
+            -webkit-user-select: none;
             height: 100dvh;
             width: 100vw;
             display: flex;
             justify-content: center;
             align-items: center;
+            overscroll-behavior: none;
         }
 
         #game-container {
@@ -49,6 +51,7 @@
             display: block;
             width: 100%;
             height: 100%;
+            touch-action: none;
         }
 
         /* Landscape Warning */
@@ -138,7 +141,6 @@
         }
         .card-btn:hover { transform: translateY(-5px) scale(1.02); }
         
-        /* Rarity Glows */
         .card-btn.rarity-common { border-color: var(--common); box-shadow: 0 4px 0 #444; }
         .card-btn.rarity-uncommon { border-color: var(--uncommon); box-shadow: 0 0 15px rgba(0,243,255,0.1), 0 4px 0 #005f63; }
         .card-btn.rarity-rare { border-color: var(--rare); box-shadow: 0 0 15px rgba(0,255,0,0.1), 0 4px 0 #005500; }
@@ -158,6 +160,8 @@
         .rarity-legendary .rarity-badge { color: var(--legendary); border: 1px solid var(--legendary); background: rgba(255, 215, 0, 0.1); }
 
         .card-btn.locked { opacity: 0.5; filter: grayscale(1); cursor: not-allowed; border-color: #333; box-shadow: none; }
+        .card-btn.glitch { border-color: var(--neon-pink); }
+        .card-btn.glitch:hover { box-shadow: 0 0 15px rgba(255, 0, 255, 0.3); }
 
         .btn-primary {
             background: var(--neon-blue); color: #000; font-weight: 900;
@@ -169,7 +173,6 @@
         }
         .btn-primary:active { transform: scale(0.95); background: #fff; }
 
-        /* Mobile Hints */
         #mobile-controls-hint {
             position: absolute; bottom: 40px; width: 100%; display: flex; justify-content: center; gap: 20px;
             opacity: 0.5; pointer-events: none; transition: opacity 0.5s;
@@ -230,7 +233,7 @@
         <!-- Class Selection -->
         <div id="class-screen" class="overlay-screen active">
             <h1 class="text-5xl font-black text-transparent bg-clip-text bg-gradient-to-b from-white to-cyan-200 mb-2 font-orbitron italic tracking-tighter drop-shadow-[0_0_15px_cyan]">NEON BREAKER</h1>
-            <p class="text-xs text-cyan-500 tracking-[0.5em] mb-8 font-orbitron">GALAXY EDITION v6.1</p>
+            <p class="text-xs text-cyan-500 tracking-[0.5em] mb-8 font-orbitron">GALAXY EDITION v6.3</p>
             <div class="grid grid-cols-2 gap-3 w-full px-6 mb-4 overflow-y-auto max-h-[60vh]">
                 <div class="card-btn rarity-common" onclick="startGame('Spark')">
                     <div class="text-4xl mb-2 text-cyan-400">✦</div>
@@ -253,6 +256,7 @@
                     <div class="text-[10px] text-gray-400" id="phantom-hint">Locked (Sector 2)</div>
                 </div>
             </div>
+            <div class="absolute bottom-4 left-6 text-xs text-gray-600 font-orbitron tracking-widest">A Wisedawn Game</div>
         </div>
 
         <!-- Level Up -->
@@ -309,7 +313,7 @@ const Audio = {
         bgOsc.start();
         lfo.start();
     },
-    play: function(type) {
+    play: function(type, pitch = 1) {
         if(this.ctx.state === 'suspended') return;
         const osc = this.ctx.createOscillator();
         const gain = this.ctx.createGain();
@@ -317,7 +321,7 @@ const Audio = {
         gain.connect(this.masterGain);
         const now = this.ctx.currentTime;
         if (type === 'shoot') {
-            osc.type = 'triangle'; osc.frequency.setValueAtTime(400, now);
+            osc.type = 'triangle'; osc.frequency.setValueAtTime(400 * pitch, now);
             osc.frequency.exponentialRampToValueAtTime(100, now + 0.15);
             gain.gain.setValueAtTime(0.2, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
             osc.start(now); osc.stop(now + 0.15);
@@ -391,6 +395,16 @@ const PERKS = [
     { id: 'nuke', name: 'Nuclear Core', desc: 'Explosive Balls', icon: '☢', rarity: RARITY.LEGENDARY, apply: p => p.mods.explosive = true }
 ];
 
+const UPGRADES = {
+    hpMax: { lvl: 1, cost: 100, inc: 50, name: "Hull", desc: "Max HP" },
+    damage: { lvl: 1, cost: 150, inc: 5, name: "Core", desc: "Damage" },
+    fireRate: { lvl: 1, cost: 200, inc: -1, name: "Cycle", desc: "Fire Rate" },
+    speed: { lvl: 1, cost: 80, inc: 0.5, name: "Thruster", desc: "Speed" },
+    multi: { lvl: 1, cost: 500, inc: 1, name: "Split", desc: "Multi-shot" },
+    luck: { lvl: 1, cost: 300, inc: 0.05, name: "Luck", desc: "+Crit %" },
+    magnet: { lvl: 1, cost: 150, inc: 40, name: "Magnet", desc: "Pickup Range" }
+};
+
 const ZONES = [
     { name: 'NEON CITY', color: '#00f3ff' }, { name: 'VOID SECTOR', color: '#b026ff' }, { name: 'SOLAR FLARE', color: '#ffaa00' }, { name: 'MATRIX', color: '#00ff00' }
 ];
@@ -398,12 +412,13 @@ const ZONES = [
 /** STATE */
 let gameState = 'MENU';
 let frames = 0, score = 0, shards = 0, wave = 0, combo = 0, comboTimer = 0;
-let xp = 0, level = 1;
+let xp = 0, level = 1, nextXp = 100;
 let player, boss;
 let entities = { balls: [], enemies: [], particles: [], text: [], powerups: [], drones: [], blackholes: [], hazards: [], stars: [], clouds: [], projectiles: [] };
 let input = { x: 0, aimX: 0, aimY: 0, active: false, type: 'none' };
 let formationQueue = [], spawnTimer = 0;
 let touchState = { sliderX: null, joyStart: null, joyCurr: null, leftId: null, rightId: null };
+let maxZoneReached = 0;
 let bgOffset = 0;
 let currentZone = 0;
 let warpSpeed = 0;
@@ -412,7 +427,7 @@ let hitStop = 0;
 
 function uiShake(amt) { shake = amt; }
 
-/** BACKGROUND */
+/** BACKGROUND SYSTEM */
 class Star {
     constructor() { this.init(true); }
     init(first=false) {
@@ -570,7 +585,7 @@ class Ball {
     update() {
         if(frames % 2 === 0) {
             this.trail.push({x: this.x, y: this.y});
-            if(this.trail.length > 8) this.trail.shift();
+            if(this.trail.length > 10) this.trail.shift();
         }
         
         this.x += this.vx; this.y += this.vy;
@@ -589,7 +604,6 @@ class Ball {
         ctx.save();
         ctx.globalCompositeOperation = 'lighter';
         
-        // Ribbon Trail
         if(this.trail.length > 1) {
             ctx.lineCap = 'round';
             for(let i=0; i < this.trail.length - 1; i++) {
@@ -616,16 +630,69 @@ class Enemy {
         this.boss = boss;
         this.w = boss ? 180 : 40; this.h = boss ? 100 : 40;
         this.x = x !== null ? x : Math.random() * (container.width - this.w);
-        this.y = y !== null ? y : -100;
-        this.hp = (boss ? 4000 : 30) * (1 + wave * 0.15); this.maxHp = this.hp;
+        this.y = y !== null ? y : -150;
+        // Reduced Boss HP from 4000 -> 1200 for faster, deadlier fights
+        this.hp = (boss ? 300 : 30) * (1 + wave * 0.15); 
+        this.maxHp = this.hp;
         this.active = true; this.type = type;
         this.color = boss ? '#f00' : `hsl(${Math.random()*60+180}, 100%, 60%)`;
         this.speed = (0.5 + Math.random()) * 0.8;
         if(player && player.mods.timeSlow) this.speed *= 0.7;
+        
+        // Boss Attack State
+        this.attackFrame = 0;
     }
+
     update() {
         this.y += this.speed;
-        if(this.boss && this.y > 100) this.y = 100;
+        if(this.boss && this.y > 80) this.y = 80;
+        
+        // Boss Bullet Hell Logic
+        if(this.boss) {
+            this.attackFrame++;
+            const cx = this.x + this.w/2;
+            const cy = this.y + this.h/2;
+            const cycle = this.attackFrame % 360; // 6 second loop at 60fps
+
+            // Pattern 1: Spiral Stream (Frames 0-120)
+            if (cycle < 120 && cycle % 8 === 0) {
+                const angle = cycle * 0.1;
+                // Fire 2 opposite streams
+                entities.projectiles.push({x: cx, y: cy, vx: Math.cos(angle)*4, vy: Math.sin(angle)*4, active: true, color: '#ff00ff', r: 4});
+                entities.projectiles.push({x: cx, y: cy, vx: Math.cos(angle+Math.PI)*4, vy: Math.sin(angle+Math.PI)*4, active: true, color: '#ff00ff', r: 4});
+            }
+
+            // Pattern 2: Targeted Spread (Frame 180 & 210)
+            if (cycle === 180 || cycle === 210) {
+                const baseAngle = Math.atan2(player.y - cy, (player.x + player.w/2) - cx);
+                for(let i=-2; i<=2; i++) {
+                    const a = baseAngle + (i * 0.2);
+                    entities.projectiles.push({x: cx, y: cy, vx: Math.cos(a)*6, vy: Math.sin(a)*6, active: true, color: '#ffff00', r: 6});
+                }
+                Audio.play('shoot');
+            }
+
+            // Pattern 3: Nova Burst (Frame 300)
+            if (cycle === 300) {
+                for(let i=0; i<16; i++) {
+                    const a = (Math.PI * 2 / 16) * i;
+                    entities.projectiles.push({x: cx, y: cy, vx: Math.cos(a)*3, vy: Math.sin(a)*3, active: true, color: '#ff0000', r: 8});
+                }
+                uiShake(5);
+                Audio.play('boss_warn');
+            }
+        }
+        
+        // Sniper Logic
+        if(this.type === 2 && this.y > 0 && this.y < container.height/2) {
+            this.shootTimer--;
+            if(this.shootTimer <= 0) {
+                this.shootTimer = 180;
+                let ang = Math.atan2(player.y - this.y, (player.x+player.w/2) - (this.x+this.w/2));
+                entities.projectiles.push({x:this.x+this.w/2, y:this.y+this.h, vx:Math.cos(ang)*5, vy:Math.sin(ang)*5, active:true});
+            }
+        }
+
         if(this.y > container.height) { this.active = false; player.hit(10); }
         if(!this.boss && this.active && collides(this, player)) { player.hit(15); this.active = false; deathEffect(this); }
     }
@@ -720,34 +787,85 @@ function mapInput(e, touch) {
 
 window.addEventListener('mousedown', () => input.type = 'mouse');
 window.addEventListener('mousemove', e => { const p = mapInput(e); input.aimX = p.x; input.aimY = p.y; });
+
+// Robust Touch Logic
 window.addEventListener('touchstart', e => {
+    // 1. Always try to resume audio context on first physical interaction
+    if (Audio.ctx.state === 'suspended') Audio.init();
+
+    // 2. If we are in the MENU or SHOP, let the event propagate so 'click' handlers work
+    if (gameState !== 'PLAYING' && gameState !== 'WARP') return;
+
+    // 3. Only prevent default behavior during gameplay to stop scrolling/zooming
     if(!e.target.closest('#game-container')) return;
-    e.preventDefault(); input.type = 'touch'; Audio.init();
+    e.preventDefault(); 
+    input.type = 'touch';
+    document.getElementById('mobile-controls-hint').style.opacity = 0;
+    
     for(let i=0; i<e.changedTouches.length; i++) {
-        const p = mapInput(e, e.changedTouches[i]);
-        if(p.y > container.height * 0.6) {
-            if(p.x < container.width/2 && !touchState.leftId) { touchState.leftId = e.changedTouches[i].identifier; touchState.sliderX = p.x; }
-            else if(!touchState.rightId) { touchState.rightId = e.changedTouches[i].identifier; touchState.joyStart = {x:p.x, y:p.y}; touchState.joyCurr = {x:p.x, y:p.y}; }
+        const t = e.changedTouches[i];
+        const pos = mapInput(e, t);
+        
+        // Bottom Area check for initial grab
+        if(pos.y > container.height * 0.6) {
+            if(pos.x < container.width / 2 && touchState.leftId === null) {
+                touchState.leftId = t.identifier;
+                touchState.sliderX = pos.x;
+            } else if (touchState.rightId === null) {
+                touchState.rightId = t.identifier;
+                touchState.joyStart = {x: pos.x, y: pos.y};
+                touchState.joyCurr = {x: pos.x, y: pos.y};
+            }
         }
     }
 }, {passive: false});
+
 window.addEventListener('touchmove', e => {
-    if(input.type !== 'touch') return;
+    if (gameState !== 'PLAYING' && gameState !== 'WARP') return;
+    if(!input.type === 'touch') return;
     e.preventDefault();
     for(let i=0; i<e.changedTouches.length; i++) {
         const t = e.changedTouches[i];
-        const p = mapInput(e, t);
-        if(t.identifier === touchState.leftId) touchState.sliderX = p.x;
-        if(t.identifier === touchState.rightId) touchState.joyCurr = {x:p.x, y:p.y};
+        const pos = mapInput(e, t);
+        
+        if(t.identifier === touchState.leftId) {
+            touchState.sliderX = pos.x;
+        }
+        if(t.identifier === touchState.rightId) {
+            touchState.joyCurr = {x: pos.x, y: pos.y};
+        }
     }
 }, {passive: false});
-window.addEventListener('touchend', e => {
-    for(let i=0; i<e.changedTouches.length; i++) {
-        const t = e.changedTouches[i];
-        if(t.identifier === touchState.leftId) { touchState.leftId = null; touchState.sliderX = null; }
-        if(t.identifier === touchState.rightId) { touchState.rightId = null; touchState.joyStart = null; }
+
+function handleTouchEndOrCancel(e) {
+    if (gameState !== 'PLAYING' && gameState !== 'WARP') return;
+    e.preventDefault();
+    
+    // Check active touches to clean up state
+    let leftStillActive = false;
+    let rightStillActive = false;
+    
+    for(let i=0; i<e.touches.length; i++) {
+        const t = e.touches[i];
+        if(t.identifier === touchState.leftId) leftStillActive = true;
+        if(t.identifier === touchState.rightId) rightStillActive = true;
     }
-});
+    
+    if(!leftStillActive) {
+        touchState.leftId = null;
+        touchState.sliderX = null;
+    }
+    
+    if(!rightStillActive) {
+        touchState.rightId = null;
+        touchState.joyStart = null;
+        touchState.joyCurr = null;
+    }
+}
+
+window.addEventListener('touchend', handleTouchEndOrCancel);
+window.addEventListener('touchcancel', handleTouchEndOrCancel);
+
 const keys = {};
 window.addEventListener('keydown', e => keys[e.key] = true);
 window.addEventListener('keyup', e => keys[e.key] = false);
