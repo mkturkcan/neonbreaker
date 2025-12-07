@@ -616,7 +616,7 @@
         let shake = 0;
         let hitStop = 0;
 
-        function uiShake(amt) { shake = amt; }
+        function uiShake(amt) { shake = Math.max(shake, amt); }
 
         /** BACKGROUND SYSTEM */
         class Star {
@@ -1267,6 +1267,7 @@
         function startBoss() {
             boss = new Enemy(true);
             entities.enemies.push(boss);
+            uiShake(20); // Big shake for boss entrance
             document.getElementById('boss-warning').style.opacity = 1;
             Audio.play('boss_warn');
             setTimeout(() => document.getElementById('boss-warning').style.opacity = 0, 3000);
@@ -1380,6 +1381,8 @@
         }
 
         function createExplosion(x, y, c, scale = 10) {
+            if (scale >= 15) uiShake(scale * 0.3); // Screen shake on big explosions
+
             // Impact Flash
             entities.particles.push(new Particle(x, y, '#fff', 'impact'));
             if (scale > 10) entities.particles.push(new Particle(x, y, c || '#fff', 'flare'));
@@ -1404,6 +1407,7 @@
         }
 
         function triggerNuclearExplosion(source, damage) {
+            uiShake(10 + (source.mods ? source.mods.explosive * 2 : 0));
             createShockwave(source.x + source.w / 2, source.y + source.h / 2, '#ff8800', 150);
             createParticles(source.x + source.w / 2, source.y + source.h / 2, 20, '#ff8800', 'smoke');
             const targets = entities.enemies.filter(e => e.active && e !== source);
