@@ -573,17 +573,17 @@
             { id: 'multi_u', name: 'Splitter', desc: '+1 Projectile', icon: '✦', rarity: RARITY.UNCOMMON, apply: p => p.mods.multi++ },
             { id: 'crit_u', name: 'Scope', desc: '+10% Crit Chance', icon: '🎯', rarity: RARITY.UNCOMMON, apply: p => p.mods.critChance += 0.1 },
             { id: 'laser', name: 'Laser Sight', desc: 'Aim Guide', icon: '🔭', rarity: RARITY.UNCOMMON, apply: p => p.mods.laser = true },
-            { id: 'ricochet', name: 'Ricochet', desc: 'Balls Bounce 1x', icon: '↩', rarity: RARITY.RARE, apply: p => p.mods.ricochet = true },
-            { id: 'pierce', name: 'Pierce', desc: 'Balls Pierce Foes', icon: '📌', rarity: RARITY.RARE, apply: p => p.mods.pierce = true },
+            { id: 'ricochet', name: 'Ricochet', desc: 'Balls Bounce +1', icon: '↩', rarity: RARITY.RARE, apply: p => p.mods.ricochet++ },
+            { id: 'pierce', name: 'Pierce', desc: 'Pierce +1 Foe', icon: '📌', rarity: RARITY.RARE, apply: p => p.mods.pierce++ },
             { id: 'drone', name: 'Drone', desc: 'Support Unit', icon: '🛸', rarity: RARITY.RARE, apply: p => addDrone() },
             { id: 'barrier', name: 'Shield Gen', desc: 'Block 1 Hit', icon: '🛡', rarity: RARITY.RARE, apply: p => p.mods.barrierMax++ },
-            { id: 'chain', name: 'Tesla Coil', desc: 'Chain Lightning', icon: '🌩', rarity: RARITY.EPIC, apply: p => p.mods.chain = true },
-            { id: 'vamp', name: 'Vampirism', desc: 'Heal on Kill', icon: '🩸', rarity: RARITY.EPIC, apply: p => p.mods.vamp = true },
-            { id: 'time', name: 'Time Dilation', desc: 'Slow Enemies 30%', icon: '⏳', rarity: RARITY.EPIC, apply: p => p.mods.timeSlow = true },
-            { id: 'split', name: 'Quantum Split', desc: 'Split on Hit', icon: '💠', rarity: RARITY.EPIC, apply: p => p.mods.splitOnHit = true },
+            { id: 'chain', name: 'Tesla Coil', desc: 'Chain Lightning', icon: '🌩', rarity: RARITY.EPIC, apply: p => p.mods.chain++ },
+            { id: 'vamp', name: 'Vampirism', desc: 'Heal on Kill', icon: '🩸', rarity: RARITY.EPIC, apply: p => p.mods.vamp++ },
+            { id: 'time', name: 'Time Dilation', desc: 'Slow Enemies', icon: '⏳', rarity: RARITY.EPIC, apply: p => p.mods.timeSlow++ },
+            { id: 'split', name: 'Quantum Split', desc: 'Split on Hit', icon: '💠', rarity: RARITY.EPIC, apply: p => p.mods.splitOnHit++ },
             { id: 'blackhole', name: 'Singularity', desc: 'Gravity Well', icon: '🌌', rarity: RARITY.LEGENDARY, apply: p => addBlackHole() },
-            { id: 'exec', name: 'Executioner', desc: 'Kill <20% HP', icon: '☠', rarity: RARITY.LEGENDARY, apply: p => p.mods.execute = true },
-            { id: 'nuke', name: 'Nuclear Core', desc: 'Explosive Balls', icon: '☢', rarity: RARITY.LEGENDARY, apply: p => p.mods.explosive = true }
+            { id: 'exec', name: 'Executioner', desc: 'Kill <20% HP', icon: '☠', rarity: RARITY.LEGENDARY, apply: p => p.mods.execute++ },
+            { id: 'nuke', name: 'Nuclear Core', desc: 'Explosive Balls', icon: '☢', rarity: RARITY.LEGENDARY, apply: p => p.mods.explosive++ }
         ];
 
         const UPGRADES = {
@@ -697,7 +697,7 @@
                 this.h = 20;
                 this.x = container.width / 2 - this.w / 2;
                 this.y = container.height - 100;
-                this.mods = { dmg: 1, rate: 1, multi: 1, chain: false, vamp: false, barrier: 0, barrierMax: 0, reflect: false, ricochet: false, pierce: false, timeSlow: false, laser: false, critChance: 0, overload: false };
+                this.mods = { dmg: 1, rate: 1, multi: 1, chain: 0, vamp: 0, barrier: 0, barrierMax: 0, reflect: 0, ricochet: 0, pierce: 0, timeSlow: 0, laser: false, critChance: 0, overload: false, splitOnHit: 0, execute: 0, explosive: 0 };
                 this.hp = CONFIG.baseHp * cls.hp;
                 this.maxHp = this.hp;
                 this.lastShot = 0;
@@ -769,7 +769,7 @@
                 this.dmg = dmg; this.color = color;
                 this.active = true; this.homing = homing; this.mods = mods;
                 this.isCrit = Math.random() < critChance;
-                this.bounces = mods.ricochet ? 1 : 0;
+                this.bounces = mods.ricochet || 0;
                 if (this.isCrit) { this.dmg *= 2; this.r += 2; this.color = '#fff'; }
                 this.trail = [];
             }
@@ -912,14 +912,14 @@
                 addFloatingText(Math.floor(dmg), this.x + this.w / 2, this.y, '#fff');
                 if (this.hp <= 0) {
                     this.active = false; deathEffect(this); score += 10; shards++; gainXp(15); addCombo(); Audio.play('hit');
-                    if (player.mods.vamp && Math.random() < 0.1) player.hp = Math.min(player.maxHp, player.hp + 2);
+                    if (player.mods.vamp > 0 && Math.random() < (0.1 * player.mods.vamp)) player.hp = Math.min(player.maxHp, player.hp + 2);
 
                     // Logic For Chain Lightning
-                    if (player.mods.chain && !mods.isChain) {
+                    if (player.mods.chain > 0 && !mods.isChain) {
                         chainLightning(this, dmg);
                     }
 
-                    if (mods.explosive) triggerNuclearExplosion(this, dmg);
+                    if (mods.explosive > 0) triggerNuclearExplosion(this, dmg);
                     if (this.boss) { boss = null; wave++; document.getElementById('boss-warning').style.opacity = 0; triggerWarp(); hitStop = 20; }
                     else hitStop = 3;
                 }
@@ -1271,7 +1271,7 @@
         function chainLightning(source, damage) {
             const candidates = entities.enemies.filter(e => e.active && e !== source && !e.boss);
             candidates.forEach(e => e._dist = Math.hypot(e.x - source.x, e.y - source.y));
-            const targets = candidates.filter(e => e._dist < 250).sort((a, b) => a._dist - b._dist).slice(0, 3);
+            const targets = candidates.filter(e => e._dist < 250).sort((a, b) => a._dist - b._dist).slice(0, 3 + (source.player ? source.player.mods.chain : (player.mods.chain || 1)));
 
             targets.forEach(t => {
                 entities.particles.push({
@@ -1323,8 +1323,8 @@
             const targets = entities.enemies.filter(e => e.active && e !== source);
             targets.forEach(e => {
                 const dist = Math.hypot((e.x + e.w / 2) - (source.x + source.w / 2), (e.y + e.h / 2) - (source.y + source.h / 2));
-                if (dist < 150) {
-                    e.hit(damage, { explosion: true });
+                if (dist < 150 + (source.mods ? source.mods.explosive * 25 : 0)) {
+                    e.hit(damage * (0.5 + (source.mods ? source.mods.explosive * 0.2 : 0)), { explosion: true });
                 }
             });
         }
@@ -1464,14 +1464,15 @@
                 entities.enemies.forEach(e => {
                     if (e.active && collides(ballBox, e)) {
                         b.vy *= -1; b.y += b.vy;
-                        if (b.mods && b.mods.pierce) { /* pass */ }
-                        else if (b.mods && b.mods.ricochet && b.bounces > 0) { b.bounces--; }
+
+                        if (b.mods && b.mods.pierce > 0) { b.mods.pierce--; /* consume pierce stack logic could be refined but this works */ }
+                        else if (b.mods && b.mods.ricochet > 0 && b.bounces > 0) { b.bounces--; }
                         else { b.active = false; }
 
-                        if (b.mods && b.mods.splitOnHit && b.r > 2) {
+                        if (b.mods && b.mods.splitOnHit > 0 && b.r > 2) {
                             for (let i = 0; i < 2; i++) {
                                 const angle = Math.atan2(b.vy, b.vx) + (i === 0 ? 0.5 : -0.5);
-                                entities.balls.push(new Ball(b.x, b.y, angle, b.dmg * 0.5, b.color, false, 0, { ...b.mods, splitOnHit: false }, b.r - 1));
+                                entities.balls.push(new Ball(b.x, b.y, angle, b.dmg * 0.5, b.color, false, 0, { ...b.mods, splitOnHit: 0 }, b.r - 1));
                             }
                         }
                         e.hit(b.dmg, b.mods);
