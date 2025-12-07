@@ -770,6 +770,7 @@
                 this.active = true; this.homing = homing; this.mods = mods;
                 this.isCrit = Math.random() < critChance;
                 this.bounces = mods.ricochet || 0;
+                this.pierceCount = mods.pierce || 0;
                 if (this.isCrit) { this.dmg *= 2; this.r += 2; this.color = '#fff'; }
                 this.trail = [];
             }
@@ -836,7 +837,8 @@
             }
 
             update() {
-                this.y += this.speed;
+                const speedMod = player && player.mods.timeSlow ? (1.0 / (1 + player.mods.timeSlow * 0.5)) : 1;
+                this.y += this.speed * speedMod;
                 if (this.boss && this.y > 80) this.y = 80;
 
                 // Boss Bullet Hell Logic
@@ -910,6 +912,7 @@
                 if (mods.execute && this.hp < this.maxHp * 0.2 && !this.boss) dmg = this.hp + 1;
                 this.hp -= dmg;
                 addFloatingText(Math.floor(dmg), this.x + this.w / 2, this.y, '#fff');
+                createHitEffect(this.x + this.w / 2, this.y + this.h / 2, this.color);
                 if (this.hp <= 0) {
                     this.active = false; deathEffect(this); score += 10; shards++; gainXp(15); addCombo(); Audio.play('hit');
                     if (player.mods.vamp > 0 && Math.random() < (0.1 * player.mods.vamp)) player.hp = Math.min(player.maxHp, player.hp + 2);
@@ -996,6 +999,7 @@
             hit(dmg) {
                 this.flash = 4;
                 this.hp -= dmg;
+                createHitEffect(this.x, this.y, '#aaa');
                 if (this.hp <= 0) {
                     this.active = false;
                     createExplosion(this.x, this.y, '#aaa', 15);
@@ -1008,49 +1012,78 @@
             constructor(x, y, c, type = 'debris') {
                 this.x = x; this.y = y; this.c = c; this.type = type;
                 const angle = Math.random() * Math.PI * 2;
+                this.gravity = 0; this.friction = 0.95;
 
                 if (type === 'spark') {
-                    const speed = Math.random() * 8 + 4;
+                    const speed = Math.random() * 10 + 5;
                     this.vx = Math.cos(angle) * speed; this.vy = Math.sin(angle) * speed;
-                    this.life = 0.5 + Math.random() * 0.3;
-                    this.decay = 0.05 + Math.random() * 0.05;
+                    this.life = 0.5 + Math.random() * 0.4;
+                    this.decay = 0.03 + Math.random() * 0.02;
+                    this.gravity = 0.2;
                     this.r = 2;
+                } else if (type === 'impact') {
+                    this.vx = 0; this.vy = 0;
+                    this.life = 1.0; this.decay = 0.15;
+                    this.r = 1; this.maxR = 25;
+                    this.c = '#fff';
                 } else if (type === 'smoke') {
                     const speed = Math.random() * 2 + 0.5;
-                    this.vx = Math.cos(angle) * speed; this.vy = Math.sin(angle) * speed - 1; // drift up
-                    this.life = 1.0;
-                    this.decay = 0.01 + Math.random() * 0.01;
+                    this.vx = Math.cos(angle) * speed; this.vy = Math.sin(angle) * speed - 1;
+                    this.life = 1.0; this.decay = 0.015;
                     this.r = 10 + Math.random() * 10;
                 } else { // debris
-                    const speed = Math.random() * 4 + 2;
+                    const speed = Math.random() * 6 + 2;
                     this.vx = Math.cos(angle) * speed; this.vy = Math.sin(angle) * speed;
-                    this.life = 1.0;
-                    this.decay = Math.random() * 0.03 + 0.02;
+                    this.life = 1.0; this.decay = Math.random() * 0.03 + 0.02;
                     this.r = 4;
+                    this.rotation = Math.random() * Math.PI;
+                    this.rotSpeed = (Math.random() - 0.5) * 0.2;
                 }
             }
             update() {
                 this.x += this.vx; this.y += this.vy;
-                this.vx *= 0.95; this.vy *= 0.95;
+                this.vy += this.gravity;
+                this.vx *= this.friction; this.vy *= this.friction;
                 this.life -= this.decay;
-                if (this.type === 'smoke') this.r += 0.2;
-                else this.r *= 0.96;
+
+                if (this.type === 'impact') {
+                    this.r += (this.maxR - this.r) * 0.3;
+                } else if (this.type === 'smoke') {
+                    this.r += 0.1;
+                } else if (this.type === 'debris') {
+                    this.rotation += this.rotSpeed;
+                    this.r *= 0.98;
+                } else {
+                    this.r *= 0.95;
+                }
             }
             draw() {
+                ctx.save();
                 ctx.globalAlpha = Math.max(0, this.life);
-                ctx.fillStyle = this.c;
-                ctx.beginPath();
+
                 if (this.type === 'spark') {
-                    // Stretch spark based on velocity
-                    const v = Math.hypot(this.vx, this.vy);
-                    const ang = Math.atan2(this.vy, this.vx);
-                    ctx.save(); ctx.translate(this.x, this.y); ctx.rotate(ang);
-                    ctx.fillRect(0, -this.r / 2, this.r * 2 * (v / 2), this.r);
-                    ctx.restore();
+                    ctx.shadowBlur = 15; ctx.shadowColor = this.c;
+                    ctx.lineWidth = 2; ctx.strokeStyle = this.c;
+                    ctx.beginPath();
+                    ctx.moveTo(this.x, this.y);
+                    ctx.lineTo(this.x - this.vx * 1.5, this.y - this.vy * 1.5);
+                    ctx.stroke();
+                    ctx.shadowBlur = 0; // optimized
+                } else if (this.type === 'impact') {
+                    ctx.shadowBlur = 20; ctx.shadowColor = this.c;
+                    ctx.fillStyle = this.c;
+                    ctx.beginPath(); ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2); ctx.fill();
+                    ctx.shadowBlur = 0;
+                } else if (this.type === 'debris') {
+                    ctx.translate(this.x, this.y);
+                    ctx.rotate(this.rotation);
+                    ctx.fillStyle = this.c;
+                    ctx.fillRect(-this.r / 2, -this.r / 2, this.r, this.r);
                 } else {
-                    ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2); ctx.fill();
+                    ctx.fillStyle = this.c;
+                    ctx.beginPath(); ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2); ctx.fill();
                 }
-                ctx.globalAlpha = 1;
+                ctx.restore();
             }
         }
 
@@ -1180,6 +1213,7 @@
             gameState = 'WARP';
             setTimeout(() => {
                 currentZone = Math.min(ZONES.length - 1, Math.floor(wave / 5));
+                if (currentZone > maxZoneReached) maxZoneReached = currentZone;
                 gameState = 'PLAYING';
                 const t = document.getElementById('wave-title');
                 if (t) t.innerText = "ZONE " + (currentZone + 1);
@@ -1305,12 +1339,19 @@
         }
 
         function createExplosion(x, y, c, scale = 10) {
-            // Sparks
-            for (let i = 0; i < scale; i++) entities.particles.push(new Particle(x, y, '#fff', 'spark'));
+            // Impact Flash
+            entities.particles.push(new Particle(x, y, '#fff', 'impact'));
+            // Sparks (high velocity)
+            for (let i = 0; i < scale * 1.5; i++) entities.particles.push(new Particle(x, y, c || '#fff', 'spark'));
             // Smoke
             for (let i = 0; i < scale / 2; i++) entities.particles.push(new Particle(x, y, 'rgba(100,100,100,0.5)', 'smoke'));
             // Debris
             if (c) for (let i = 0; i < scale / 2; i++) entities.particles.push(new Particle(x, y, c, 'debris'));
+        }
+
+        function createHitEffect(x, y, c) {
+            entities.particles.push(new Particle(x, y, '#fff', 'impact'));
+            for (let i = 0; i < 3; i++) entities.particles.push(new Particle(x, y, c || '#fff', 'spark'));
         }
 
         function createShockwave(x, y, c, r = 30) {
@@ -1394,7 +1435,6 @@
                 entities.enemies.forEach(e => { if (e.active) { e.x += (bh.x - e.x) * 0.05; e.y += (bh.y - e.y) * 0.05; } });
             });
             entities.blackholes = entities.blackholes.filter(bh => bh.life > 0);
-
             entities.hazards.forEach(h => { h.update(); h.draw(); });
             entities.hazards = entities.hazards.filter(h => h.active);
 
@@ -1407,20 +1447,18 @@
                     if (e.active && collides(ballBox, e)) {
                         b.vy *= -1; b.y += b.vy;
 
-                        if (b.mods && b.mods.splitOnHit && b.r > 2) {
+                        if (b.mods && b.mods.splitOnHit > 0 && b.r > 2) {
                             for (let i = 0; i < 2; i++) {
                                 let angle = Math.atan2(b.vy, b.vx) + (i === 0 ? 0.5 : -0.5);
                                 let speed = Math.hypot(b.vx, b.vy);
-                                let nb = new Ball(b.x, b.y, angle, speed, b.color, true);
-                                nb.r = b.r * 0.6;
+                                let nb = new Ball(b.x, b.y, angle, speed, b.color, true, 0, { ...b.mods, splitOnHit: 0 }, b.r - 1);
                                 nb.dmg = b.dmg * 0.5;
-                                nb.mods = { ...b.mods, splitOnHit: false };
                                 entities.balls.push(nb);
                             }
                         }
 
-                        if (b.mods && b.mods.pierce) { /* pass */ }
-                        else if (b.mods && b.mods.ricochet && b.bounces > 0) { b.bounces--; }
+                        if (b.pierceCount > 0) { b.pierceCount--; }
+                        else if (b.bounces > 0) { b.bounces--; }
                         else { b.active = false; }
                         e.hit(b.dmg, b.mods);
                     }
@@ -1457,42 +1495,11 @@
             });
             entities.projectiles = entities.projectiles.filter(p => p.active);
 
-            entities.balls.forEach(b => {
-                if (!b.active) return;
-                const ballBox = { x: b.x - b.r, y: b.y - b.r, w: b.r * 2, h: b.r * 2 };
-
-                entities.enemies.forEach(e => {
-                    if (e.active && collides(ballBox, e)) {
-                        b.vy *= -1; b.y += b.vy;
-
-                        if (b.mods && b.mods.pierce > 0) { b.mods.pierce--; /* consume pierce stack logic could be refined but this works */ }
-                        else if (b.mods && b.mods.ricochet > 0 && b.bounces > 0) { b.bounces--; }
-                        else { b.active = false; }
-
-                        if (b.mods && b.mods.splitOnHit > 0 && b.r > 2) {
-                            for (let i = 0; i < 2; i++) {
-                                const angle = Math.atan2(b.vy, b.vx) + (i === 0 ? 0.5 : -0.5);
-                                entities.balls.push(new Ball(b.x, b.y, angle, b.dmg * 0.5, b.color, false, 0, { ...b.mods, splitOnHit: 0 }, b.r - 1));
-                            }
-                        }
-                        e.hit(b.dmg, b.mods);
-                    }
-                });
-
-                entities.hazards.forEach(h => {
-                    if (h.active && collides(ballBox, { x: h.x - h.r, y: h.y - h.r, w: h.r * 2, h: h.r * 2 })) {
-                        b.vy *= -1; b.y += b.vy;
-                        h.hit(b.dmg);
-                    }
-                });
-            });
-
             spawnLogic();
             drawTouchControls();
             ctx.restore();
         }
 
-        // Helpers
         class Drone {
             constructor() {
                 this.x = player.x; this.y = player.y;
