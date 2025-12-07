@@ -832,6 +832,7 @@
 
                 // Boss Attack State
                 this.attackFrame = 0;
+                this.flash = 0;
             }
 
             update() {
@@ -888,7 +889,15 @@
                 if (!this.boss && this.active && collides(this, player)) { player.hit(15); this.active = false; deathEffect(this); }
             }
             draw() {
-                ctx.save(); ctx.shadowBlur = 10; ctx.shadowColor = this.color; ctx.fillStyle = this.color;
+                ctx.save(); ctx.shadowBlur = 10; ctx.shadowColor = this.color;
+
+                if (this.flash > 0) {
+                    ctx.fillStyle = '#ffffff';
+                    this.flash--;
+                } else {
+                    ctx.fillStyle = this.color;
+                }
+
                 if (this.type === 1) { ctx.beginPath(); ctx.moveTo(this.x, this.y); ctx.lineTo(this.x + this.w, this.y); ctx.lineTo(this.x + this.w / 2, this.y + this.h); ctx.fill(); }
                 else if (this.type === 3) { ctx.fillRect(this.x, this.y, this.w, this.h); ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.strokeRect(this.x + 5, this.y + 5, this.w - 10, this.h - 10); }
                 else { ctx.fillRect(this.x, this.y, this.w, this.h); }
@@ -897,6 +906,7 @@
                 ctx.restore();
             }
             hit(dmg, mods = {}) {
+                this.flash = 4;
                 if (mods.execute && this.hp < this.maxHp * 0.2 && !this.boss) dmg = this.hp + 1;
                 this.hp -= dmg;
                 addFloatingText(Math.floor(dmg), this.x + this.w / 2, this.y, '#fff');
@@ -922,6 +932,7 @@
                 this.angle = 0;
                 this.spin = (Math.random() - 0.5) * 0.1;
                 this.hp = 50;
+                this.flash = 0;
             }
             update() {
                 this.x += this.vx; this.y += this.vy; this.angle += this.spin;
@@ -932,7 +943,17 @@
             }
             draw() {
                 ctx.save(); ctx.translate(this.x, this.y); ctx.rotate(this.angle);
-                ctx.fillStyle = '#555'; ctx.strokeStyle = '#777'; ctx.lineWidth = 2;
+
+                if (this.flash > 0) {
+                    ctx.fillStyle = '#ffffff';
+                    ctx.strokeStyle = '#ffffff';
+                    this.flash--;
+                } else {
+                    ctx.fillStyle = '#555';
+                    ctx.strokeStyle = '#777';
+                }
+
+                ctx.lineWidth = 2;
                 ctx.beginPath();
                 for (let i = 0; i < 6; i++) {
                     const a = (i / 6) * Math.PI * 2;
@@ -941,6 +962,7 @@
                 ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.restore();
             }
             hit(dmg) {
+                this.flash = 4;
                 this.hp -= dmg;
                 if (this.hp <= 0) {
                     this.active = false; createParticles(this.x, this.y, 8, '#888'); Audio.play('explode');
@@ -1070,7 +1092,15 @@
             gameState = 'PLAYING';
             entities = { balls: [], enemies: [], particles: [], text: [], powerups: [], drones: [], blackholes: [], hazards: [], stars: [], clouds: [], projectiles: [] };
             initBackground();
+            // Reset ALL game state
             score = 0; wave = 0; xp = 0; level = 1; currentZone = 0;
+            frames = 0; shards = 0; combo = 0; comboTimer = 0;
+            boss = null;
+            warpSpeed = 0; shake = 0; hitStop = 0;
+            // Clean inputs
+            touchState = { sliderX: null, joyStart: null, joyCurr: null, leftId: null, rightId: null };
+            for (let k in keys) keys[k] = false;
+
             formationQueue = [];
             document.querySelectorAll('.overlay-screen').forEach(el => el.classList.remove('active'));
             Audio.init();
