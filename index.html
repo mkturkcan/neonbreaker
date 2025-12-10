@@ -438,7 +438,7 @@
                 <div id="phantom-card" class="card-btn locked" onclick="tryStartPhantom()">
                     <div class="text-4xl mb-2 text-purple-500">?</div>
                     <div class="font-bold text-white text-sm">PHANTOM</div>
-                    <div class="text-[10px] text-gray-400" id="phantom-hint">Locked (Sector 2)</div>
+                    <div class="text-[10px] text-gray-400" id="phantom-hint">Locked (Wave 6)</div>
                 </div>
             </div>
             <div class="absolute bottom-4 left-6 text-xs text-gray-600 font-orbitron tracking-widest">A Wisedawn Game
@@ -610,6 +610,7 @@
         let formationQueue = [], spawnTimer = 0;
         let touchState = { sliderX: null, joyStart: null, joyCurr: null, leftId: null, rightId: null };
         let maxZoneReached = 0;
+        let maxWaveReached = 0;
         let bgOffset = 0;
         let currentZone = 0;
         let warpSpeed = 0;
@@ -1247,7 +1248,7 @@
             Audio.init();
             resize();
             startNextWave();
-            loop();
+            // loop() removed from here to prevent stacking
         }
 
         function triggerWarp() {
@@ -1298,6 +1299,8 @@
             const notif = document.getElementById('wave-notification');
             if (title) title.innerText = "WAVE " + wave;
             if (notif) { notif.style.opacity = 1; setTimeout(() => notif.style.opacity = 0, 2000); }
+
+            if (wave > maxWaveReached) maxWaveReached = wave;
 
             if (wave % 5 === 0) {
                 startBoss();
@@ -1408,11 +1411,35 @@
 
         function triggerNuclearExplosion(source, damage) {
             uiShake(10 + (source.mods ? source.mods.explosive * 2 : 0));
-            createShockwave(source.x + source.w / 2, source.y + source.h / 2, '#ff8800', 150);
-            createParticles(source.x + source.w / 2, source.y + source.h / 2, 20, '#ff8800', 'smoke');
+
+            const cx = source.x + source.w / 2;
+            const cy = source.y + source.h / 2;
+            const scale = 1 + (source.mods ? source.mods.explosive * 0.2 : 0);
+
+            // 1. Shockwave (Orange)
+            createShockwave(cx, cy, '#ff8800', 150 * scale);
+
+            // 2. Bright Central Flare
+            entities.particles.push(new Particle(cx, cy, '#ffcc00', 'flare'));
+
+            // 3. Expanding Rings (Orange & Red)
+            entities.particles.push(new Particle(cx, cy, '#ff4400', 'ring'));
+            entities.particles.push(new Particle(cx, cy, '#ff8800', 'ring'));
+
+            // 4. Kinetic Sparks instead of Smoke (High velocity, short life)
+            for (let i = 0; i < 30 * scale; i++) {
+                const c = Math.random() > 0.5 ? '#ffaa00' : '#ffff00';
+                entities.particles.push(new Particle(cx, cy, c, 'spark'));
+            }
+
+            // 5. Debris for impact feel
+            for (let i = 0; i < 15 * scale; i++) {
+                entities.particles.push(new Particle(cx, cy, '#884400', 'debris'));
+            }
+
             const targets = entities.enemies.filter(e => e.active && e !== source);
             targets.forEach(e => {
-                const dist = Math.hypot((e.x + e.w / 2) - (source.x + source.w / 2), (e.y + e.h / 2) - (source.y + source.h / 2));
+                const dist = Math.hypot((e.x + e.w / 2) - cx, (e.y + e.h / 2) - cy);
                 if (dist < 150 + (source.mods ? source.mods.explosive * 25 : 0)) {
                     e.hit(damage * (0.5 + (source.mods ? source.mods.explosive * 0.2 : 0)), { explosion: true });
                 }
@@ -1580,7 +1607,7 @@
         }
 
         function tryStartPhantom() {
-            if (maxZoneReached >= 1) startGame('Phantom');
+            if (maxWaveReached >= 6) startGame('Phantom');
             else {
                 const el = document.getElementById('phantom-hint');
                 el.style.color = '#f00';
@@ -1588,7 +1615,11 @@
                 Audio.play('hit');
             }
         }
-        function gameOver() { gameState = 'GAMEOVER'; document.getElementById('shop-screen').classList.add('active'); }
+        function gameOver() {
+            gameState = 'GAMEOVER';
+            document.getElementById('shop-screen').classList.add('active');
+            document.getElementById('shop-currency').innerText = score;
+        }
         function restartGame() { document.getElementById('shop-screen').classList.remove('active'); document.getElementById('class-screen').classList.add('active'); gameState = 'MENU'; }
         function addFloatingText(text, x, y, c) {
             entities.text.push({
@@ -1599,7 +1630,10 @@
         }
 
         resize();
-        player = new Player(CLASSES['Spark']); 
+        player = new Player(CLASSES['Spark']);
+
+        // Start the game loop once globally
+        loop();
     </script>
 </body>
 
